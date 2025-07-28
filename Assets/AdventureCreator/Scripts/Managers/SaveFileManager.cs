@@ -223,6 +223,7 @@ namespace AC
 			EditorGUILayout.Space ();
 
 			foundSaveFiles = saveFileHandler.GatherSaveFiles (selectedProfileID);
+			SaveSystem.UpdateSaveFileLabels (ref foundSaveFiles);
 
 			EditorGUILayout.BeginVertical (CustomStyles.thinBox);
 			showSaves = CustomGUILayout.ToggleHeader (showSaves, "Save game files");
@@ -298,7 +299,11 @@ namespace AC
 
 				CustomGUILayout.MultiLineLabelGUI ("Filename:", selectedSaveFile.fileName);
 
-				EditorGUILayout.LabelField ("Timestamp:", selectedSaveFile.updatedTime.ToString ());
+				if (selectedSaveFile.updatedTime != 0)
+				{
+					var updatedTime = selectedSaveFile.GetUpdatedTime ();
+					EditorGUILayout.LabelField ("Timestamp:", updatedTime.ToShortDateString () + " " + updatedTime.ToShortTimeString ());
+				}
 				if (!string.IsNullOrEmpty (selectedSaveFile.screenshotFilename))
 				{
 					CustomGUILayout.MultiLineLabelGUI ("Filename:", selectedSaveFile.screenshotFilename);

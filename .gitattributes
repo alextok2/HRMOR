@@ -1,3 +1,7 @@
+# Устанавливаем стандартное поведение: Git сам управляет окончаниями строк.
+# В репозитории все хранится как LF, а локально - в зависимости от ОС.
+* text=auto eol=lf
+
 # Unity asset files
 *.asset filter=lfs diff=lfs merge=lfs -text
 *.mat filter=lfs diff=lfs merge=lfs -text

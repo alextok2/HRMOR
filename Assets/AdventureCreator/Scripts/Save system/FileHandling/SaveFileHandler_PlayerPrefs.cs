@@ -13,8 +13,14 @@ namespace AC
 	public class SaveFileHandler_PlayerPrefs : iSaveFileHandler
 	{
 
+		#region Variables
+
 		protected const string screenshotKey = "_screenshot";
 
+		#endregion
+
+
+		#region PublicFunctions
 
 		public virtual string GetDefaultSaveLabel (int saveID)
 		{
@@ -69,7 +75,7 @@ namespace AC
 			try
 			{
 				PlayerPrefs.SetString (fullFilename, dataToSave);
-				#if UNITY_PS4 || UNITY_SWITCH
+				#if UNITY_PS4 || UNITY_SWITCH || UNITY_WEBGL
 				PlayerPrefs.Save ();
 				#endif
 				ACDebug.Log ("PlayerPrefs key written: " + fullFilename);
@@ -138,6 +144,59 @@ namespace AC
 		}
 
 
+		public virtual List<SaveFile> GatherImportFiles (int profileID, int boolID, string separateProductName, string separateFilePrefix)
+		{
+			if (!string.IsNullOrEmpty (separateProductName) && !string.IsNullOrEmpty (separateFilePrefix))
+			{
+				return GatherSaveFiles (profileID, true, boolID, separateFilePrefix);
+			}
+			return null;
+		}
+
+
+		public virtual void SaveScreenshot (SaveFile saveFile)
+		{
+			string fullFilename = GetSaveFilename (saveFile.saveID, saveFile.profileID) + screenshotKey;
+
+			try
+			{
+				byte[] bytes = saveFile.screenShot.EncodeToJPG ();
+				string dataToSave = Convert.ToBase64String (bytes);
+
+				PlayerPrefs.SetString (fullFilename, dataToSave);
+				#if UNITY_PS4 || UNITY_SWITCH
+				PlayerPrefs.Save ();
+				#endif
+				ACDebug.Log ("PlayerPrefs key written: " + fullFilename);
+			}
+			catch (Exception e)
+ 			{
+				ACDebug.LogWarning ("Could not save PlayerPrefs data under key " + fullFilename + ". Exception: " + e);
+ 			}
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected virtual List<SaveFile> GatherSaveFiles (int profileID, bool isImport, int boolID, string separateFilePrefix)
+		{
+			List<SaveFile> gatheredSaveFiles = new List<SaveFile>();
+
+			for (int i = 0; i < MaxSaves; i++)
+			{
+				SaveFile saveFile = GetSaveFile (i, profileID, isImport, boolID, separateFilePrefix);
+				if (saveFile != null)
+				{
+					gatheredSaveFiles.Add (saveFile);
+				}
+			}
+
+			return gatheredSaveFiles;
+		}
+
+
 		protected virtual SaveFile GetSaveFile (int saveID, int profileID, bool isImport, int boolID, string separateFilePrefix)
 		{
 			bool isAutoSave = (saveID == 0);
@@ -176,20 +235,20 @@ namespace AC
 				}
 
 				int updateTime = 0;
-				if (KickStarter.settingsManager.saveTimeDisplay != SaveTimeDisplay.None)
+
+				string dateKey = filename + "_timestamp";
+				if (PlayerPrefs.HasKey (dateKey))
 				{
-					string dateKey = filename + "_timestamp";
-
-					if (PlayerPrefs.HasKey (dateKey))
+					string timestampData = PlayerPrefs.GetString (dateKey);
+					if (!string.IsNullOrEmpty (timestampData))
 					{
-						string timestampData = PlayerPrefs.GetString (dateKey);
-						if (!string.IsNullOrEmpty (timestampData))
+						if (int.TryParse (timestampData, out updateTime) && !isAutoSave)
 						{
-							if (int.TryParse (timestampData, out updateTime) && !isAutoSave)
-							{
-								DateTime startDate = new DateTime (2000, 1, 1, 0, 0, 0).ToUniversalTime ();
-								DateTime saveDate = startDate.AddSeconds (updateTime);
+							DateTime startDate = new DateTime (2000, 1, 1, 0, 0, 0).ToUniversalTime ();
+							DateTime saveDate = startDate.AddSeconds (updateTime);
 
+							if (KickStarter.settingsManager.saveTimeDisplay != SaveTimeDisplay.None)
+							{
 								label += GetTimeString (saveDate);
 							}
 						}
@@ -200,55 +259,6 @@ namespace AC
 			}
 
 			return null;
-		}
-
-
-		public virtual List<SaveFile> GatherImportFiles (int profileID, int boolID, string separateProductName, string separateFilePrefix)
-		{
-			if (!string.IsNullOrEmpty (separateProductName) && !string.IsNullOrEmpty (separateFilePrefix))
-			{
-				return GatherSaveFiles (profileID, true, boolID, separateFilePrefix);
-			}
-			return null;
-		}
-
-
-		protected virtual List<SaveFile> GatherSaveFiles (int profileID, bool isImport, int boolID, string separateFilePrefix)
-		{
-			List<SaveFile> gatheredSaveFiles = new List<SaveFile>();
-
-			for (int i = 0; i < SaveSystem.MAX_SAVES; i++)
-			{
-				SaveFile saveFile = GetSaveFile (i, profileID, isImport, boolID, separateFilePrefix);
-				if (saveFile != null)
-				{
-					gatheredSaveFiles.Add (saveFile);
-				}
-			}
-
-			return gatheredSaveFiles;
-		}
-
-
-		public virtual void SaveScreenshot (SaveFile saveFile)
-		{
-			string fullFilename = GetSaveFilename (saveFile.saveID, saveFile.profileID) + screenshotKey;
-
-			try
-			{
-				byte[] bytes = saveFile.screenShot.EncodeToJPG ();
-				string dataToSave = Convert.ToBase64String (bytes);
-
-				PlayerPrefs.SetString (fullFilename, dataToSave);
-				#if UNITY_PS4 || UNITY_SWITCH
-				PlayerPrefs.Save ();
-				#endif
-				ACDebug.Log ("PlayerPrefs key written: " + fullFilename);
-			}
-			catch (Exception e)
- 			{
-				ACDebug.LogWarning ("Could not save PlayerPrefs data under key " + fullFilename + ". Exception: " + e);
- 			}
 		}
 
 
@@ -297,6 +307,14 @@ namespace AC
 			return string.Empty;
 		}
 
+		#endregion
+
+
+		#region GetSet
+
+		protected virtual int MaxSaves { get { return 50; } }
+
+		#endregion
 	}
 
 }

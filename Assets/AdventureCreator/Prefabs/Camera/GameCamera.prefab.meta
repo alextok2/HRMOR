@@ -1,8 +1,3 @@
-fileFormatVersion: 2
-guid: ac8da0983da1047639d0d518a4d05319
-labels:
-- Camera
-NativeFormatImporter:
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+version https://git-lfs.github.com/spec/v1
+oid sha256:65597de578d3abe703dbd0e7090aed2c4d72f43536e6a05d733093410ec79763
+size 155

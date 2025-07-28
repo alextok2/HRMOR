@@ -10,6 +10,7 @@
  */
 
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -1593,13 +1594,13 @@ namespace AC
 		 * <summary>Checks if any input button is currently being pressed, simulated or otherwise.</summary>
 		 * <returns>True if any input button is currently being pressed, simulated or otherwise.</returns>
 		 */
-		public bool InputAnyKey ()
+		public bool InputAnyKeyDown ()
 		{
 			if (menuButtonInput != null && !string.IsNullOrEmpty (menuButtonInput))
 			{
 				return true;
 			}
-			return Input.anyKey;
+			return Input.anyKeyDown;
 		}
 
 
@@ -1650,7 +1651,7 @@ namespace AC
 		 */
 		public float InputGetAxis (string axis)
 		{
-			if (string.IsNullOrEmpty (axis))
+			if (string.IsNullOrEmpty (axis) || !KickStarter.stateHandler.CanReceiveInput ())
 			{
 				return 0f;
 			}
@@ -1753,7 +1754,7 @@ namespace AC
 		}
 
 
-		protected TouchPhase InputTouchPhase (int index)
+		public TouchPhase InputTouchPhase (int index)
 		{
 			if (InputGetTouchPhaseDelegate != null)
 			{
@@ -1816,7 +1817,7 @@ namespace AC
 		 */
 		public bool InputGetButton (string axis)
 		{
-			if (string.IsNullOrEmpty (axis))
+			if (string.IsNullOrEmpty (axis) || !KickStarter.stateHandler.CanReceiveInput ())
 			{
 				return false;
 			}
@@ -1869,7 +1870,7 @@ namespace AC
 		 */
 		public bool InputGetButtonDown (string axis, bool showError = false)
 		{
-			if (string.IsNullOrEmpty (axis))
+			if (string.IsNullOrEmpty (axis) || !KickStarter.stateHandler.CanReceiveInput ())
 			{
 				return false;
 			}
@@ -1927,7 +1928,7 @@ namespace AC
 		 */
 		public bool InputGetButtonUp (string axis)
 		{
-			if (string.IsNullOrEmpty (axis))
+			if (string.IsNullOrEmpty (axis) || !KickStarter.stateHandler.CanReceiveInput ())
 			{
 				return false;
 			}
@@ -2034,12 +2035,14 @@ namespace AC
 				}
 				else if (IsDragObjectHeld ())
 				{
-					if (dragState == DragState.None && !cursorIsLocked && (deltaDragMouse.magnitude * Time.deltaTime <= 1f) && (GetInvertedMouse () - dragStartPosition).magnitude / ACScreen.LongestDimension < KickStarter.settingsManager.dragThreshold)
+					if (dragState != DragState.Moveable && !cursorIsLocked &&/* (deltaDragMouse.magnitude * Time.deltaTime <= 1f) &&*/ (GetInvertedMouse () - dragStartPosition).magnitude / ACScreen.LongestDimension < KickStarter.settingsManager.dragThreshold)
 					{
-						return;
+						dragState = DragState.PreMoveable;
 					}
-
-					dragState = DragState.Moveable;
+					else
+					{
+						dragState = DragState.Moveable;
+					}
 				}
 				else if (KickStarter.mainCamera && KickStarter.mainCamera.attachedCamera && KickStarter.mainCamera.attachedCamera.isDragControlled && !KickStarter.stateHandler.AreCamerasDisabled ())
 				{
@@ -2049,8 +2052,9 @@ namespace AC
 					}
 
 					if (!KickStarter.playerInteraction.IsMouseOverHotspot () ||
+						!KickStarter.stateHandler.CanInteract () ||
 						!KickStarter.stateHandler.IsInGameplay () ||
-						(KickStarter.playerInteraction.GetActiveHotspot () && 
+						(KickStarter.playerInteraction.GetActiveHotspot () && !KickStarter.playerInteraction.hotspotsPreventCameraDragging &&
 							(KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ContextSensitive || 
 							(KickStarter.playerInteraction.GetActiveHotspot ().IsSingleInteraction () && KickStarter.settingsManager.interactionMethod == AC_InteractionMethod.ChooseHotspotThenInteraction))))
 					{
@@ -2125,13 +2129,15 @@ namespace AC
 			{
 				Vector3 cameraPosition = KickStarter.CameraMainTransform.position;
 
-				Vector3 deltaCamera = cameraPosition - lastCameraPosition;
-
-				foreach (HeldObjectData heldObjectData in heldObjectDatas)
+				if (dragState != DragState.PreMoveable)
 				{
-					if (!heldObjectData.IgnoreBuiltInDragInput)
+					Vector3 deltaCamera = cameraPosition - lastCameraPosition;
+					foreach (HeldObjectData heldObjectData in heldObjectDatas)
 					{
-						heldObjectData.Drag (deltaCamera, deltaDragMouse, unconstrainedMousePosition);
+						if (!heldObjectData.IgnoreBuiltInDragInput)
+						{
+							heldObjectData.Drag (deltaCamera, deltaDragMouse, unconstrainedMousePosition);
+						}
 					}
 				}
 
@@ -2692,9 +2698,27 @@ namespace AC
 		}
 
 
-		/**
-		 * <summary>Ends the active Conversation.</summary>
-		 */
+		public IEnumerator DelayConversation (Conversation conversation, System.Action callback)
+		{
+			PendingOptionConversation = conversation;
+
+			float timeElapsed = 0f;
+			while (timeElapsed < KickStarter.dialog.conversationDelay)
+			{
+				timeElapsed += Time.deltaTime;
+				yield return new WaitForEndOfFrame ();
+			}
+			
+			callback.Invoke ();
+
+			if (PendingOptionConversation == conversation)
+			{
+				PendingOptionConversation = null;
+			}
+		}
+
+
+		/** Ends the active Conversation. */
 		public void EndConversation ()
 		{
 			if (activeConversation)

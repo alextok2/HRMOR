@@ -20,6 +20,8 @@ namespace AC
 	public class SaveFileHandler_SystemFile : iSaveFileHandler
 	{
 
+		#region PublicFunctions
+
 		public virtual string GetDefaultSaveLabel (int saveID)
 		{
 			string label = (saveID == 0)
@@ -154,7 +156,30 @@ namespace AC
 		}
 
 
-		protected virtual SaveFile GetSaveFile (int saveID, int profileID, bool isImport, int boolID, string separateProductName, string separateFilePrefix)
+		public virtual void SaveScreenshot (SaveFile saveFile)
+		{
+			#if CAN_HANDLE_SCREENSHOTS
+			if (saveFile.screenShot != null)
+			{
+				string fullFilename = GetSaveDirectory () + Path.DirectorySeparatorChar.ToString () + GetSaveFilename (saveFile.saveID, saveFile.profileID, ".jpg");
+
+				byte[] bytes = saveFile.screenShot.EncodeToJPG ();
+				File.WriteAllBytes (fullFilename, bytes);
+				ACDebug.Log ("Saved screenshot: " + fullFilename);
+			}
+			else
+			{
+				ACDebug.LogWarning ("Cannot save screenshot - SaveFile's screenshot variable is null.");
+			}
+			#endif
+		}
+
+		#endregion
+
+
+		#region ProtectedFunctions
+
+		protected virtual SaveFile GetSaveFile (int saveID, int profileID, bool isImport, int boolID, string separateProductName, string separateFilePrefix, FileInfo[] info = null)
 		{
 			string saveDirectory = GetSaveDirectory (separateProductName);
 			string filePrefix = (isImport) ? separateFilePrefix : KickStarter.settingsManager.SavePrefix;
@@ -163,8 +188,24 @@ namespace AC
 			string filenameWithExtention = filename + SaveSystem.GetSaveExtension ();
 			string fullFilename = saveDirectory + Path.DirectorySeparatorChar.ToString () + filenameWithExtention;
 
-			if (File.Exists (fullFilename))
+			if (info == null)
 			{
+				DirectoryInfo dir = new DirectoryInfo (saveDirectory);
+				info = dir.GetFiles (filenameWithExtention);
+			}
+
+			if (info == null)
+			{
+				return null;
+			}
+
+			foreach (FileInfo fileInfo in info)
+			{
+				if (fileInfo.Name != filenameWithExtention)
+				{
+					continue;
+				}
+
 				if (isImport && boolID >= 0)
 				{
 					string allData = LoadFile (fullFilename, false);
@@ -183,21 +224,15 @@ namespace AC
 					isAutoSave = true;
 				}
 
+				if (!isAutoSave)
+				{
+					System.TimeSpan t = fileInfo.LastWriteTime - new System.DateTime (2015, 1, 1);
+					updateTime = (int) t.TotalSeconds;
+				}
+
 				if (KickStarter.settingsManager.saveTimeDisplay != SaveTimeDisplay.None)
 				{
-					DirectoryInfo dir = new DirectoryInfo (saveDirectory);
-					FileInfo[] info = dir.GetFiles (filenameWithExtention);
-
-					if (info != null && info.Length > 0)
-					{
-						if (!isAutoSave)
-						{
-							System.TimeSpan t = info[0].LastWriteTime - new System.DateTime (2015, 1, 1);
-							updateTime = (int) t.TotalSeconds;
-						}
-
-						label += GetTimeString (info[0].LastWriteTime);
-					}
+					label += GetTimeString (fileInfo.LastWriteTime);
 				}
 
 				Texture2D screenShot = null;
@@ -217,11 +252,15 @@ namespace AC
 
 		protected virtual List<SaveFile> GatherSaveFiles (int profileID, bool isImport, int boolID, string separateProductName, string separateFilePrefix)
 		{
-			List<SaveFile> gatheredFiles = new List<SaveFile>();
+			List<SaveFile> gatheredFiles = new List<SaveFile> ();
 
-			for (int i = 0; i < SaveSystem.MAX_SAVES; i++)
+			string saveDirectory = GetSaveDirectory (separateProductName);
+			DirectoryInfo dir = new DirectoryInfo (saveDirectory);
+			FileInfo[] info = dir.GetFiles ("*" + SaveSystem.GetSaveExtension ());
+
+			for (int i = 0; i < MaxSaves; i++)
 			{
-				SaveFile saveFile = GetSaveFile (i, profileID, isImport, boolID, separateProductName, separateFilePrefix);
+				SaveFile saveFile = GetSaveFile (i, profileID, isImport, boolID, separateProductName, separateFilePrefix, info);
 				if (saveFile != null)
 				{
 					gatheredFiles.Add (saveFile);
@@ -229,25 +268,6 @@ namespace AC
 			}
 
 			return gatheredFiles;
-		}
-
-
-		public virtual void SaveScreenshot (SaveFile saveFile)
-		{
-			#if CAN_HANDLE_SCREENSHOTS
-			if (saveFile.screenShot != null)
-			{
-				string fullFilename = GetSaveDirectory () + Path.DirectorySeparatorChar.ToString () + GetSaveFilename (saveFile.saveID, saveFile.profileID, ".jpg");
-
-				byte[] bytes = saveFile.screenShot.EncodeToJPG ();
-				File.WriteAllBytes (fullFilename, bytes);
-				ACDebug.Log ("Saved screenshot: " + fullFilename);
-			}
-			else
-			{
-				ACDebug.LogWarning ("Cannot save screenshot - SaveFile's screenshot variable is null.");
-			}
-			#endif
 		}
 
 
@@ -348,6 +368,15 @@ namespace AC
 			}
 			return (_data);
 		}
+
+		#endregion
+
+
+		#region GetSet
+
+		protected virtual int MaxSaves { get { return 50; } }
+
+		#endregion
 
 	}
 

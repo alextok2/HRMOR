@@ -203,6 +203,7 @@ namespace AC
 						});
 					}
 				}
+				CreateHoverSoundHandler (uiSlot.uiButton, _menu, i);
 				i++;
 			}
 		}
@@ -923,7 +924,7 @@ namespace AC
 		}
 
 
-		private void OnCompleteLoad ()
+		private void OnCompleteLoad (int saveID)
 		{
 			ClearAllEvents ();
 			if (autoHandle)
@@ -1010,6 +1011,13 @@ namespace AC
 					if (saveListType == AC_SaveListType.Save)
 					{
 						newSaveSlot = !SaveSystem.DoesSaveExist (optionToShow);
+					}
+					else if (saveListType == AC_SaveListType.Load)
+					{
+						if (hideIfNotValid && !SaveSystem.DoesSaveExist (optionToShow))
+						{
+							numSlots = 0;
+						}
 					}
 				}
 				else if (allowEmptySlots)

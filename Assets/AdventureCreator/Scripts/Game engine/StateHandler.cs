@@ -101,6 +101,8 @@ namespace AC
 			Time.timeScale = 1f;
 			DontDestroyOnLoad (this);
 
+			KickStarter.playerMenus.CreateEventSystem ();
+
 			KickStarter.sceneChanger.OnInitPersistentEngine ();
 			KickStarter.runtimeInventory.OnInitPersistentEngine ();
 
@@ -793,6 +795,16 @@ namespace AC
 		public bool CanInteract ()
 		{
 			return !interactionIsOff;
+		}
+
+
+		/**
+		 * <summary>Checks if the input system is enabled.</summary>
+		 * <returns>True if the input system is enabled</returns>
+		 */
+		public bool CanReceiveInput ()
+		{
+			return !inputIsOff;
 		}
 
 

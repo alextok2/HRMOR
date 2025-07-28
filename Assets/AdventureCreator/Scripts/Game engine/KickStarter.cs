@@ -1088,9 +1088,10 @@ namespace AC
 			}
 		}
 
-
+		private bool isInitialised;
 		public void Initialise ()
 		{
+			isInitialised = false;
 			if (settingsManager.IsInLoadingScene ())
 			{
 				ACDebug.Log ("Bypassing regular AC startup because the current scene is the 'Loading' scene.");
@@ -1120,8 +1121,13 @@ namespace AC
 			playerInput.OnInitGameEngine ();
 			localVariables.OnInitGameEngine ();
 			sceneSettings.OnInitGameEngine ();
+
+			isInitialised = true;
 		}
 
+
+		/** Returns True if AC has been initialised by this component */
+		public bool HasInitialisedAC { get { return isInitialised; } }
 
 
 		/** Turns Adventure Creator off. */
@@ -1260,6 +1266,27 @@ namespace AC
 			KickStarter.eventManager.Call_OnRestartGame ();
 
 			KickStarter.stateHandler.CanGlobalOnStart ();
+		}
+
+
+		/** Clears all 'live' data such as variable, inventory and other room data */
+		public static void ResetData ()
+		{
+			KickStarter.runtimeInventory.SetNull ();
+			KickStarter.runtimeInventory.RemoveRecipes ();
+
+			KickStarter.saveSystem.ClearAllData ();
+			KickStarter.levelStorage.ClearAllLevelData ();
+
+			KickStarter.sceneChanger.OnInitPersistentEngine ();
+			KickStarter.runtimeInventory.OnInitPersistentEngine ();
+
+			KickStarter.runtimeVariables.TransferFromManager ();
+			KickStarter.runtimeVariables.OnInitPersistentEngine ();
+			KickStarter.runtimeDocuments.OnInitPersistentEngine ();
+			KickStarter.runtimeObjectives.OnInitPersistentEngine ();
+
+			KickStarter.playerMenus.RecalculateAll ();
 		}
 
 	}

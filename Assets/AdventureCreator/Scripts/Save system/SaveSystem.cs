@@ -27,9 +27,12 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.AddressableAssets;
 #endif
 
-using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Text;
+using UnityEngine;
 
 namespace AC
 {
@@ -44,14 +47,13 @@ namespace AC
 		[HideInInspector] public List<SaveFile> foundSaveFiles = new List<SaveFile> ();
 		/** A List of SaveFile variables, storing all available import files. */
 		[HideInInspector] public List<SaveFile> foundImportFiles = new List<SaveFile> ();
+		public bool IsInitialisingAfterLoad { get; private set; }
 
 		public const string pipe = "|";
 		public const string colon = ":";
 		public const string mainDataDivider = "||";
 		public const string mainDataDivider_Replacement = "*DOUBLEPIPE*";
 
-		public const int MAX_SAVES = 50;
-		
 		private SaveData saveData = new SaveData ();
 		private SelectiveLoad activeSelectiveLoad = new SelectiveLoad ();
 
@@ -79,7 +81,7 @@ namespace AC
 
 
 		/** Searches the filesystem for all available save files, and stores them in foundSaveFiles. */
-		public void GatherSaveFiles ()
+		public List<SaveFile> GatherSaveFiles ()
 		{
 			foundSaveFiles = SaveFileHandler.GatherSaveFiles (Options.GetActiveProfileID ());
 
@@ -88,11 +90,13 @@ namespace AC
 				foundSaveFiles.Sort (delegate (SaveFile a, SaveFile b) { return a.updatedTime.CompareTo (b.updatedTime); });
 			}
 
-			UpdateSaveFileLabels ();
+			UpdateSaveFileLabels (ref foundSaveFiles);
+
+			return foundSaveFiles;
 		}
 
 
-		private void UpdateSaveFileLabels ()
+		public static void UpdateSaveFileLabels (ref List<SaveFile> _saveFiles)
 		{
 			// Now get save file labels
 			if (Options.optionsData != null && !string.IsNullOrEmpty (Options.optionsData.saveFileNames))
@@ -106,13 +110,13 @@ namespace AC
 					int.TryParse (chunkData[0], out _id);
 					string _label = chunkData[1];
 
-					for (int i = 0; i < Mathf.Min (MAX_SAVES, foundSaveFiles.Count); i++)
+					for (int i = 0; i < _saveFiles.Count; i++)
 					{
-						if (foundSaveFiles[i].saveID == _id)
+						if (_saveFiles[i].saveID == _id)
 						{
-							SaveFile newSaveFile = new SaveFile (foundSaveFiles[i]);
+							SaveFile newSaveFile = new SaveFile (_saveFiles[i]);
 							newSaveFile.SetLabel (_label);
-							foundSaveFiles[i] = newSaveFile;
+							_saveFiles[i] = newSaveFile;
 						}
 					}
 				}
@@ -126,12 +130,14 @@ namespace AC
 		 * <param name = "filePrefix">The "save filename" of the game whose save files we're looking to import, as set in the Settings Manager</param>
 		 * <param name = "boolID">If >= 0, the ID of the boolean Global Variable that must be True for the file to be considered valid for import</param>
 		 */
-		public void GatherImportFiles (string projectName, string filePrefix, int boolID)
+		public List<SaveFile> GatherImportFiles (string projectName, string filePrefix, int boolID)
 		{
 			#if !UNITY_STANDALONE
 			ACDebug.LogWarning ("Cannot import save files unless running on Windows, Mac or Linux standalone platforms.");
+			return new List<SaveFile> ();
 			#else
 			foundImportFiles = SaveFileHandler.GatherImportFiles (Options.GetActiveProfileID (), boolID, projectName, filePrefix);
+			return foundImportFiles;
 			#endif
 		}
 
@@ -268,6 +274,31 @@ namespace AC
 		}
 
 
+		public static bool ContinueGame (int tagID)
+		{
+			KickStarter.saveSystem.GatherSaveFiles ();
+			int maxTime = 0;
+			SaveFile mostRecentSave = null;
+
+			foreach (SaveFile saveFile in KickStarter.saveSystem.foundSaveFiles)
+			{
+				var time = -saveFile.updatedTime;
+				if (time > maxTime)
+				{
+					maxTime = time;
+					mostRecentSave = saveFile;
+				}
+			}
+
+			if (mostRecentSave != null)
+			{
+				LoadGame (mostRecentSave);
+				return true;
+			}
+			return false;
+		}
+
+
 		/**
 		 * <summary>Loads the last-recorded save game file.</summary>
 		 * <returns>True if a save-game file was found to load, False otherwise</returns>
@@ -391,6 +422,11 @@ namespace AC
 
 				if (!string.IsNullOrEmpty (fileData))
 				{
+					if (KickStarter.settingsManager.saveCompression)
+					{
+						fileData = SaveSystem.DecompressString (fileData);
+					}
+					
 					KickStarter.eventManager.Call_OnImport (FileAccessState.Before);
 
 					saveData = ExtractMainData (fileData);
@@ -473,6 +509,11 @@ namespace AC
 		{
 			if (variableExtractionCallback == null) return;
 
+			if (KickStarter.settingsManager.saveCompression)
+			{
+				fileData = SaveSystem.DecompressString (fileData);
+			}
+
 			SaveData saveData = ExtractMainData (fileData);
 			if (saveData != null)
 			{
@@ -527,6 +568,11 @@ namespace AC
 				yield break;
 			}
 
+			if (KickStarter.settingsManager.saveCompression)
+			{
+				fileData = SaveSystem.DecompressString (fileData);
+			}
+
 			KickStarter.eventManager.Call_OnLoad (FileAccessState.Before, saveFile.saveID, saveFile);
 
 			saveData = ExtractMainData (fileData);
@@ -554,7 +600,11 @@ namespace AC
 						}
 
 						_loadingGame = LoadingGame.InNewScene;
-						KickStarter.sceneChanger.ChangeScene (newSceneName, false, forceReload);
+						bool isOK = KickStarter.sceneChanger.ChangeScene (newSceneName, false, forceReload);
+						if (!isOK)
+						{
+							_loadingGame = LoadingGame.No;
+						}
 						yield break;
 					}
 					break;
@@ -571,7 +621,11 @@ namespace AC
 						}
 
 						_loadingGame = LoadingGame.InNewScene;
-						KickStarter.sceneChanger.ChangeScene (newSceneIndex, false, forceReload);
+						bool isOK = KickStarter.sceneChanger.ChangeScene (newSceneIndex, false, forceReload);
+						if (!isOK)
+						{
+							_loadingGame = LoadingGame.No;
+						}
 						yield break;
 					}
 					break;
@@ -593,7 +647,7 @@ namespace AC
 				}
 			}
 
-			InitAfterLoad ();
+			InitAfterLoad (saveFile.saveID);
 		}
 
 
@@ -661,22 +715,25 @@ namespace AC
 		}
 
 
-		public void InitAfterLoad ()
+		public void InitAfterLoad (int saveID = -1)
 		{
 			if (KickStarter.settingsManager.IsInLoadingScene ())
 			{
 				return;
 			}
 
-			StartCoroutine (InitAfterLoadCo ());
+			StartCoroutine (InitAfterLoadCo (saveID));
 		}
 
 
-		private IEnumerator InitAfterLoadCo ()
+		private IEnumerator InitAfterLoadCo (int saveID)
 		{
+			IsInitialisingAfterLoad = true;
+
 			KickStarter.mainCamera.OnInitialiseScene ();
 			KickStarter.playerInteraction.StopMovingToHotspot ();
 			KickStarter.runtimeInventory.OnInitialiseScene ();
+			KickStarter.playerCursor.OnInitialiseScene ();
 			KickStarter.playerMenus.OnInitialiseScene ();
 			KickStarter.sceneChanger.OnInitialiseScene ();
 			KickStarter.stateHandler.OnInitialiseScene ();
@@ -719,7 +776,7 @@ namespace AC
 
 						KickStarter.playerInput.OnLoad ();
 						KickStarter.sceneSettings.OnLoad ();
-						KickStarter.eventManager.Call_OnLoad (FileAccessState.After, -1);
+						KickStarter.eventManager.Call_OnLoad (FileAccessState.After, saveID);
 					}
 					break;
 
@@ -767,6 +824,7 @@ namespace AC
 
 			AssetLoader.UnloadAssets ();
 
+			IsInitialisingAfterLoad = false;
 			KickStarter.eventManager.Call_OnAfterChangeScene (thisFrameLoadingGame);
 		}
 
@@ -870,7 +928,7 @@ namespace AC
 		{
 			SaveSystem.SaveGame (0, saveID, true, overwriteLabel, newLabel);
 		}
-		
+
 
 		/**
 		 * <summary>Saves the game.</summary>
@@ -960,9 +1018,9 @@ namespace AC
 			{
 				newLabel = string.Empty;
 			}
-
 			int profileID = Options.GetActiveProfileID ();
-			SaveFile saveFile = new SaveFile (saveID, profileID, newLabel, string.Empty, null, string.Empty);
+
+			SaveFile saveFile = new SaveFile (saveID, profileID, newLabel, string.Empty, null, string.Empty, 0);
 
 			if (KickStarter.settingsManager.saveScreenshots == SaveScreenshots.Always || (KickStarter.settingsManager.saveScreenshots == SaveScreenshots.ExceptWhenAutosaving && !saveFile.IsAutoSave))
 			{
@@ -1011,7 +1069,7 @@ namespace AC
 			// Update label
 			if (!string.IsNullOrEmpty (saveFile.label))
 			{
-				for (int i = 0; i < Mathf.Min (MAX_SAVES, foundSaveFiles.Count); i++)
+				for (int i = 0; i < foundSaveFiles.Count; i++)
 				{
 					if (foundSaveFiles[i].saveID == saveFile.saveID)
 					{
@@ -1038,7 +1096,7 @@ namespace AC
 
 			Options.UpdateSaveLabels (foundSaveFiles.ToArray ());
 
-			UpdateSaveFileLabels ();
+			UpdateSaveFileLabels (ref foundSaveFiles);
 
 			KickStarter.eventManager.Call_OnSave (FileAccessState.After, saveFile.saveID, saveFile);
 		}
@@ -2370,7 +2428,12 @@ namespace AC
 			if (!useSaveID)
 			{
 				// For this to work, must have loaded the list of saves into a SavesList
-				saveID = KickStarter.saveSystem.foundSaveFiles[elementSlot].saveID;
+				if (foundSaveFiles == null || elementSlot < 0 || elementSlot >= foundSaveFiles.Count)
+				{
+					ACDebug.LogWarning ("Cannot delete save file - invalid slot # " + elementSlot);
+					return;
+				}
+				saveID = foundSaveFiles[elementSlot].saveID;
 			}
 
 			foreach (SaveFile saveFile in foundSaveFiles)
@@ -2437,10 +2500,15 @@ namespace AC
 		 */
 		public int GetNumSaves (bool includeAutoSaves = true)
 		{
+			if (includeAutoSaves)
+			{
+				return foundSaveFiles.Count;
+			}
+
 			int numFound = 0;
 			foreach (SaveFile saveFile in foundSaveFiles)
 			{
-				if (!saveFile.IsAutoSave || includeAutoSaves)
+				if (!saveFile.IsAutoSave)
 				{
 					numFound ++;
 				}
@@ -2478,7 +2546,20 @@ namespace AC
 			return null;
 		}
 
-		
+
+		public SaveFile GetImportFile (int saveID)
+		{
+			foreach (SaveFile saveFile in foundImportFiles)
+			{
+				if (saveFile.saveID == saveID)
+				{
+					return saveFile;
+				}
+			}
+			return null;
+		}
+
+
 		/** The iSaveFileHandler class that handles the creation, loading, and deletion of save files */
 		public static iSaveFileHandler SaveFileHandler
 		{
@@ -2601,6 +2682,48 @@ namespace AC
 					return KickStarter.runtimeLanguages.GetTranslatableText (KickStarter.settingsManager.saveLabels, 2);
 				}
 				return "Autosave";
+			}
+		}
+
+
+		public static string CompressString (string text)
+		{
+			byte[] buffer = Encoding.UTF8.GetBytes(text);
+			var memoryStream = new MemoryStream();
+			using (var gZipStream = new GZipStream (memoryStream, CompressionMode.Compress, true))
+			{
+				gZipStream.Write( buffer, 0, buffer.Length);
+			}
+
+			memoryStream.Position = 0;
+
+			var compressedData = new byte[memoryStream.Length];
+			memoryStream.Read(compressedData, 0, compressedData.Length);
+
+			var gZipBuffer = new byte[compressedData.Length + 4];
+			System.Buffer.BlockCopy (compressedData, 0, gZipBuffer, 4, compressedData.Length);
+			System.Buffer.BlockCopy (System.BitConverter.GetBytes (buffer.Length), 0, gZipBuffer, 0, 4);
+			return System.Convert.ToBase64String (gZipBuffer);
+		}
+
+
+		public static string DecompressString (string compressedText)
+		{
+			byte[] gZipBuffer = System.Convert.FromBase64String (compressedText);
+			using (var memoryStream = new MemoryStream ())
+			{
+				int dataLength = System.BitConverter.ToInt32 (gZipBuffer, 0);
+				memoryStream.Write (gZipBuffer, 4, gZipBuffer.Length - 4);
+
+				var buffer = new byte[dataLength];
+
+				memoryStream.Position = 0;
+				using (var gZipStream = new GZipStream (memoryStream, CompressionMode.Decompress))
+				{
+					gZipStream.Read (buffer, 0, buffer.Length);
+				}
+
+				return Encoding.UTF8.GetString (buffer);
 			}
 		}
 

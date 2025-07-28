@@ -309,6 +309,7 @@ namespace AC
 				KickStarter.mainCamera.attachedCamera.MoveCameraInstant ();
 			}
 
+			newPlayer._Update ();
 			hasSpawnedPlayer = true;
 		}
 
@@ -426,9 +427,9 @@ namespace AC
 				AddSaveScript <RememberNPC> (newPlayerNPC);
 			}
 
-			AssignConstantID <NPC> (oldPlayerNPC, oldPlayerNPC_ID, -1);
-			AssignConstantID <NPC> (newPlayerNPC, newPlayerNPC_ID, -1);
-			AssignConstantID <Marker> (newPlayerMarker, newPlayerMarker_ID, -1);
+			oldPlayerNPC_ID = AssignConstantID<NPC> (oldPlayerNPC, oldPlayerNPC_ID, -1);
+			newPlayerNPC_ID = AssignConstantID<NPC> (newPlayerNPC, newPlayerNPC_ID, -1);
+			newPlayerMarker_ID = AssignConstantID<Marker> (newPlayerMarker, newPlayerMarker_ID, -1);
 		}
 
 		
